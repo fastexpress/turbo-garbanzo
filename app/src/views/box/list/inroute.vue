@@ -1,0 +1,603 @@
+<template>
+  <div>
+    <div class="row">
+      <div class="col-xl-12 col-lg-12 col-sm-12">
+        <div class="panel br-6 p-0">
+          <div class="custom-table">
+            <div class="table-header">
+              <h5>
+                Total: {{ this.pagination.total }}
+                {{ this.pagination.total === 1 ? "paquete" : "paquetes" }}
+              </h5>
+              <download
+                :typeReport="{ name: 'En camino', value: 'ROUTE' }"
+                :customer="customer"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-xl-12 col-lg-12 col-sm-12">
+        <div class="panel br-6 p-0">
+          <div class="custom-table">
+            <div class="table-header">
+              <!-- SHOW -->
+              <div class="d-flex align-items-center">
+                <span>Mostrar :</span>
+                <span class="ml-2">
+                  <b-select v-model="show" size="sm" @change="$emit('call')">
+                    <b-select-option value="5">5</b-select-option>
+                    <b-select-option value="10">10</b-select-option>
+                    <b-select-option value="20">20</b-select-option>
+                    <b-select-option value="50">50</b-select-option>
+                  </b-select>
+                </span>
+              </div>
+              <!-- END SHOW -->
+              <!-- SEARCH -->
+              <div class="header-search">
+                <b-input
+                  v-model="search"
+                  size="sm"
+                  placeholder="Buscar..."
+                  @input="$emit('call')"
+                />
+                <div class="search-image">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="feather feather-search"
+                  >
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </div>
+              </div>
+              <!-- END SEARCH -->
+            </div>
+
+            <b-table
+              ref="basic_table"
+              responsive
+              hover
+              :items="items"
+              :fields="columns"
+              :busy="isBusy"
+              :show-empty="true"
+            >
+              <template #cell(telephone)="row">
+                <a
+                  :href="
+                    row.item.telephone.length === 9
+                      ? `tel:+502-${row.item.telephone}`
+                      : `tel:+1-${row.item.telephone}`
+                  "
+                  >{{ row.item.telephone }}</a
+                >
+              </template>
+              <template #cell(weight)="row">
+                <template v-if="row.item.typical === 0">
+                  {{ myLbs(row.item.weight) }}
+                </template>
+                <template v-else>
+                  {{ myLbs(totalLbs(row.item.customer)) }}
+                </template>
+              </template>
+              <template #cell(totalPayment)="row">
+                {{ myDollar(row.item.totalPayment) }}
+              </template>
+              <template #cell(balance)="row">
+                {{ myDollar(row.item.balance) }}
+              </template>
+              <template #cell(created_at)="row">
+                {{ dateGT(row.item.created_at) }}
+              </template>
+              <template #cell(boxes)="row">
+                {{ row.item.boxes.length }} cajas
+              </template>
+              <template #cell(customer)="row">
+                <b-badge variant="warning" v-if="row.item.customer.length < 1"
+                  >Oficinas</b-badge
+                >
+                <template v-else>
+                  <b-badge
+                    variant="success"
+                    v-for="c in row.item.customer"
+                    :key="c.id"
+                    >{{ c.name }}</b-badge
+                  >
+                </template>
+              </template>
+              <template #cell(status)="row">
+                <b-badge variant="warning" v-if="row.item.status === 'ROUTE'"
+                  >EN RUTA A {{ row.item.state.toUpperCase() }}</b-badge
+                >
+              </template>
+              <template #cell(inRouteComment)="row">
+                <b-badge variant="danger" v-if="!row.item.inRouteComment"
+                  >NO SE HA RASTREADO EL PAQUETE</b-badge
+                >
+                <p v-else>{{ row.item.inRouteComment }}</p>
+              </template>
+              <template #cell(action)="row">
+                <div class="position-relative">
+                  <b-dropdown
+                    :right="true"
+                    variant="icon-only"
+                    toggle-tag="a"
+                    class="custom-dropdown"
+                  >
+                    <template #button-content>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-more-horizontal"
+                      >
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
+                      </svg>
+                    </template>
+                    <b-dropdown-item
+                      @click="openModalDelivered(row.item)"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-send"
+                      >
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      Paquete entregado
+                    </b-dropdown-item>
+                    <b-dropdown-item
+                      @click="openModalStopped(row.item)"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-send"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                      Paquete en reclamo
+                    </b-dropdown-item>
+                    <b-dropdown-item
+                      @click="openModal(row.item)"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-send"
+                      >
+                        <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                        <path
+                          d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+                        ></path>
+                        <polyline
+                          points="3.27 6.96 12 12.01 20.73 6.96"
+                        ></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                      </svg>
+                      Actualizar código UPS
+                    </b-dropdown-item>
+                    <b-dropdown-item
+                      @click="openModalComment(row.item)"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-send"
+                      >
+                        <path
+                          d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                        ></path>
+                      </svg>
+                      Observación del paquete
+                    </b-dropdown-item>
+                    <b-dropdown-item
+                      @click="openUPS(row.item.codeUPS)"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-send"
+                      >
+                        <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                        <path
+                          d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+                        ></path>
+                        <polyline
+                          points="3.27 6.96 12 12.01 20.73 6.96"
+                        ></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                      </svg>
+                      Rastrear paquete
+                    </b-dropdown-item>
+                    <b-dropdown-item
+                      @click="update(row.item.id)"
+                      v-if="userRole() === 1"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-edit-3"
+                      >
+                        <path d="M12 20h9"></path>
+                        <path
+                          d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+                        ></path>
+                      </svg>
+                      Editar
+                    </b-dropdown-item>
+                    <b-dropdown-item
+                      @click="openChat(row.item.telephone)"
+                      link-class="action-edit"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="feather feather-send"
+                      >
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                      WA Chat
+                    </b-dropdown-item>
+                  </b-dropdown>
+                </div>
+              </template>
+              <template #empty> No hay registros </template>
+            </b-table>
+
+            <div class="table-footer">
+              <div
+                class="
+                  paginating-container
+                  pagination-solid
+                  flex-column
+                  align-items-right
+                "
+              >
+                <!-- END SHO REGISTRES -->
+                <b-pagination
+                  @change="handlePage"
+                  :total-rows="pagination.total"
+                  :per-page="pagination.per_page"
+                  prev-text="Prev"
+                  next-text="Next"
+                  first-text="First"
+                  last-text="Last"
+                  first-class="first"
+                  prev-class="prev"
+                  next-class="next"
+                  last-class="last"
+                  class="rounded"
+                >
+                  <template #first-text>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                      />
+                    </svg>
+                  </template>
+                  <template #prev-text>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M15 19l-7-7 7-7"
+                      />
+                    </svg>
+                  </template>
+                  <template #next-text>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </template>
+                  <template #last-text>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                      />
+                    </svg>
+                  </template>
+                </b-pagination>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <b-toast
+        id="toast"
+        header-class="d-none"
+        body-class="toast-success d-flex justify-content-between"
+        toaster="b-toaster-bottom-right"
+      >
+        {{ msgToast }}
+        <a
+          href="javascript:;"
+          class="text-white ml-2"
+          @click="$bvToast.hide('toast')"
+          >OK</a
+        >
+      </b-toast>
+      <b-toast
+        id="toast-error"
+        header-class="d-none"
+        body-class="toast-danger d-flex justify-content-between"
+        toaster="b-toaster-bottom-right"
+      >
+        {{ msgToast }}
+        <a
+          href="javascript:;"
+          class="text-white ml-2"
+          @click="$bvToast.hide('toast')"
+          >Error</a
+        >
+      </b-toast>
+    </div>
+    <stopped ref="stopped" @save="$emit('call')" />
+    <comment ref="comment" @save="$emit('call')" />
+    <delivered ref="delivered" @save="$emit('call')" />
+    <ups ref="ups" @save="$emit('call')" />
+  </div>
+</template>
+<script>
+import Vue from "vue";
+import axios from "axios";
+import { mapGetters } from "vuex";
+import "@/assets/sass/apps/todolist.scss";
+import { eight } from "../../../utils/eight";
+import VueClipboard from "vue-clipboard2";
+import stopped from "./modals/stopped.vue";
+import delivered from "./modals/delivered.vue";
+import comment from "./modals/comment-route.vue";
+import ups from "./modals/ups.vue";
+import download from "../download.vue";
+
+VueClipboard.config.autoSetContainer = true; // add this line
+Vue.use(VueClipboard);
+
+export default {
+  components: {
+    stopped,
+    delivered,
+    comment,
+    ups,
+    download,
+  },
+  data() {
+    return {
+      items: [],
+      columns: [
+        { key: "code", label: "Código" },
+        // { key: "id", label: "Código de ratreo" },
+        { key: "codeUPS", label: "UPS" },
+        { key: "receive", label: "Destinatario" },
+        { key: "telephone", label: "Teléfono" },
+        { key: "weight", label: "Peso" },
+        { key: "totalPayment", label: "Pago" },
+        { key: "balance", label: "Pendiente" },
+        { key: "address", label: "Dirección" },
+        { key: "boxes", label: "Cajas" },
+        { key: "customer", label: "Cliente" },
+        { key: "inRouteComment", label: "Observación" },
+        { key: "status", label: "Estado" },
+        { key: "created_at", label: "Fecha de creación" },
+        { key: "action", label: "Acciones", class: "actions text-center" },
+      ],
+      show: 10,
+      isBusy: false,
+      pagination: {
+        current_page: 1,
+        total: 0,
+        per_page: 1,
+      },
+      search: "",
+      meta: {},
+      customer: -1,
+      msgToast: "",
+    };
+  },
+  mounted() {},
+  methods: {
+    ...mapGetters(["api", "userID", "userRole"]),
+    update(id) {
+      this.$router.push({
+        name: "UpdateUPS",
+        params: {
+          id,
+        },
+      });
+    },
+    parseDecimalFixed(value) {
+      return parseFloat(value).toFixed(2);
+    },
+    parseDecimal(value) {
+      return parseFloat(this.parseDecimalFixed(value));
+    },
+    totalLbs(customers) {
+      return customers.reduce((total, item) => {
+        return (total =
+          this.parseDecimal(total) + this.parseDecimal(item.weight));
+      }, 0);
+    },
+    openModal(itemPackage) {
+      this.$refs["ups"].openModal(itemPackage);
+    },
+    openModalStopped(itemPackage) {
+      this.$refs["stopped"].openModal(itemPackage);
+    },
+    openModalDelivered(itemPackage) {
+      this.$refs["delivered"].openModal(itemPackage);
+    },
+    openModalComment(itemPackage) {
+      this.$refs["comment"].openModal(itemPackage);
+    },
+    myLbs(value) {
+      return eight.lbs(parseFloat(value));
+    },
+    myDollar(value) {
+      return eight.dollar(parseFloat(value));
+    },
+    dateGT(date) {
+      const newDate = this.$moment(date);
+      return newDate.format("DD-MM-YYYY, h:mm:ss a");
+    },
+    handlePage(value) {
+      this.pagination.current_page = value;
+      this.get(this.customer);
+    },
+    get(customer) {
+      this.isBusy = true;
+      this.customer = customer;
+      if (this.search != "" && this.pagination.current_page != 1)
+        this.pagination.current_page = 1;
+      axios
+        .get(
+          this.api() +
+            `/search-package-ups-route?show=${this.show}&search=${this.search}&page=${this.pagination.current_page}&customer=${customer}`
+        )
+        .then((response) => {
+          this.isBusy = false;
+          this.items = response.data.data;
+          this.pagination = {
+            current_page: response.data.current_page,
+            total: response.data.total,
+            per_page: response.data.per_page,
+          };
+        })
+        .catch((error) => {
+          this.isBusy = false;
+          console.log(error);
+        });
+    },
+    openChat(cel) {
+      const telephone =
+        cel.length > 9
+          ? `1${cel.replaceAll("-", "")}`
+          : `502${cel.replaceAll("-", "")}`;
+      window.open(`https://wa.me/${telephone}`, "_blank");
+    },
+    openUPS(code) {
+      window.open(
+        `https://wwwapps.ups.com/WebTracking/track?loc=es_GT&tracknum=${code}&requester=ST/trackdetails`,
+        "_blank"
+      );
+    },
+  },
+};
+</script>
